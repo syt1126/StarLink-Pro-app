@@ -1,6 +1,4 @@
 
-
-```markdown
 # 🌌 StarLink Pro: 跨平台智能星野追踪控制终端
 
 <div align="center">
