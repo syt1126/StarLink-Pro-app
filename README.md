@@ -1,159 +1,136 @@
 
-# 🌌 StarLink Pro : AI-Powered GoTo Telescope Control System
+
+```markdown
+# 🌌 StarLink Pro: 跨平台智能星野追踪控制终端
 
 <div align="center">
 
 ![Python Version](https://img.shields.io/badge/Python-3.8%2B-blue.svg?style=for-the-badge&logo=python)
 ![Flet UI](https://img.shields.io/badge/UI-Flet_1.0_Beta-purple.svg?style=for-the-badge&logo=flutter)
-![Platform](https://img.shields.io/badge/Platform-Win_|_Mac_|_Android-lightgrey.svg?style=for-the-badge)
+![Astrometry](https://img.shields.io/badge/API-Astrometry.net-005571.svg?style=for-the-badge&logo=api)
+![Asyncio](https://img.shields.io/badge/Concurrency-Asyncio_%7C_Threading-red.svg?style=for-the-badge)
 ![Hardware](https://img.shields.io/badge/Hardware-ESP32_Ready-orange.svg?style=for-the-badge&logo=espressif)
 ![License](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)
 
-**基于多线程异步架构与人工智能星空盲解的跨平台天文追踪中控系统**
+**融合开普勒轨道解析、异步 AI 盲解与微秒级 UDP 遥测的天文控制系统**
 
 </div>
 
 ---
 
-## 📖 项目概述 (Overview)
+## 📖 项目摘要 (Abstract)
 
-**StarLink Pro** 是一款专为天文爱好者与极客打造的跨平台赤道仪/经纬仪中控软件。
-本项目脱离了传统的臃肿星图软件，将**高精度开普勒轨道解析算法**与 **Astrometry.net 人工智能星野解析** 深度融合。配合底层的 UDP 高速无状态通信协议，可实现手机/PC端对下位机（如 ESP32、Arduino 步进电机驱动板）的毫秒级指向控制。
+**StarLink Pro** 是一套去中心化的轻量级天文设备中控台。区别于传统 Stellarium/ASCOM 笨重的生态，本项目专为**极客自制赤道仪/经纬仪**设计。
+系统不仅内置了纯数学推演的天体历表算法，还创新性地引入了 **AI Plate Solving（星图盲解）** 技术。通过 Flet 框架实现跨平台（Windows/macOS/Android/iOS）一致的暗视觉 UI 体验，并利用无状态 UDP 协议完成与底层电机驱动板的极速握手。
 
-### ⚙️ 系统架构 (Architecture)
-```text
-[ 智能终端 (Flet UI) ]
-   ├─ 自动 GPS/NTP 同步 (ipapi)
-   ├─ 天文坐标解算引擎 (Math/Kepler)
-   │
-   ├─ [ 网络通信模块 ] ───── (Internet) ─────> [ Astrometry.net Cloud ]
-   │                                              (AI 盲解星图特征匹配)
-   │
-   └─ [ UDP 广播协议 ] ───── (WLAN/LAN) ─────> [ ESP32 硬件驱动层 ]
-                                                  (解析 RA/Dec 指令并驱动电机)
+---
+
+## 🧠 核心架构深潜 (Deep Dive)
+
+### 1. 天文推演引擎 (Astrodynamics Engine)
+脱离对庞大离线星表（如 Tycho/UCAC）的依赖，系统直接在内存中基于**儒略日 (Julian Date)** 与**开普勒轨道根数 (Keplerian Elements)** 进行实时浮点运算：
+* **时间与坐标基准**：后台守护线程 (`daemon=True`) 通过 `ipapi.co` 自动校准观测者经纬度 (Lat/Lon)，并同步 UTC 时间。
+* **黄道到赤道转换**：通过黄赤交角 ($\epsilon \approx 23.44^\circ$) 公式，精准计算日月火星的赤经 (RA) 与赤纬 (Dec)。
+* **赤道到地平转换 (球面三角学)**：
+  系统实时计算格林尼治平恒星时 (GMST) 与地方恒星时 (LST)，推导出目标天体的时角 (HA)，进而计算出适配物理电机的**高度角 (Alt) 与方位角 (Az)**。
+
+### 2. AI 盲解状态机 (Astrometry Plate Solving)
+针对无 GoTo 对齐的设备，系统集成了 Astrometry.net 的云端解析能力。为了保证 UI 绝对流畅，底层实现了复杂的**多线程异步状态机**：
+1. **Session Handshake**: 验证 `.env` 中的 API Key，获取有效期 Session。
+2. **Payload Upload**: 兼容桌面端路径 (`filepath`) 与移动端内存流 (`bytes`)，以 `degwidth` 模式（0.1~180度）动态上传星区特征。
+3. **Async Polling**: 在 `asyncio.run_in_executor` 线程池中执行长达 90 秒的阻塞轮询，分为 `Sub_ID` 队列等待与 `Job_ID` 计算解析双重阶段，并通过主线程 `page.update()` 实时映射进度。
+
+### 3. Flet 响应式事件循环 (Event Loop)
+* **并发隔离**：时钟刷新 (`update_clock`)、网络定位 (`update_location_from_network`) 使用独立 Thread 运行；AI 识别与 UI 交互使用 AsyncIO 协程。
+* **暗视觉保护 (Dark Vision)**：全局 `#111111` 与深色高对比度（Cyan/Purple）卡片设计，严防夜外场观测时屏幕强光破坏人眼暗适应。
+
+---
+
+## 🔌 硬件遥测协议 (Hardware Telemetry Specs)
+
+系统通过标准的 `socket.SOCK_DGRAM` 协议向局域网内的单片机（ESP32 / Arduino / 树莓派）发送控制流。
+
+* **通信端口**: `UDP 8888`
+* **超时机制**: `1.5s` (防止线程阻塞)
+* **数据包载荷 (Payload)**: `UTF-8` 编码的字符串
+* **格式定义**: `RA,DEC` (浮点数，保留 4 位小数)
+  
+**下位机 (C++ / Arduino) 接收伪代码示例**：
+```cpp
+// 当 ESP32 收到 UDP 包时
+String payload = udp.readString(); // 例: "185.1234,45.6789"
+int commaIndex = payload.indexOf(',');
+float target_ra = payload.substring(0, commaIndex).toFloat();
+float target_dec = payload.substring(commaIndex + 1).toFloat();
+// 将 target_ra 和 target_dec 转换为步进电机脉冲 ...
 
 ```
 
 ---
 
-## ✨ 核心特性 (Key Features)
+## 🚀 部署与运行 (Deployment)
 
-### 1. 🧮 纯数学原生天文解算引擎
+### 环境依赖清单 (requirements.txt)
 
-* 不依赖庞大的天文星表库，底层手搓**儒略日(Julian Date)推演**与**开普勒轨道根数**计算。
-* 实时解算太阳 (Sun)、月球 (Moon) 与火星 (Mars) 的赤道坐标 (RA/Dec)。
-* 结合自动获取的观测者经纬度，动态进行**球面三角学坐标系转换**，输出用于物理电机的地平坐标 (Alt/Az)。
-
-### 2. 🤖 异步 AI 星野解算 (Plate Solving)
-
-* 接入权威的 Astrometry 星图特征数据库。
-* 采用 `asyncio` 与多线程混合并发架构，在后台无感完成图片上传、Job 轮询、数据回传，**主 UI 线程达到 0 卡顿**。
-* 支持 Android 端字节流 (`bytes`) 与桌面端绝对路径 (`path`) 的多态文件读取。
-
-### 3. 📡 极简极速的下位机握手协议
-
-* 专为单片机优化的轻量级 UDP 通信，抛弃繁重的 TCP 握手。
-* 固定的指令负荷，极低延迟，完美适配自制星野赤道仪或 GoTo 经纬仪底座。
-
----
-
-## 📂 项目结构 (Project Structure)
+请确保你的项目中存在 `requirements.txt` 并包含以下内容：
 
 ```text
-StarLink-Pro/
-├── assets/                 # UI 静态资源与图标
-├── main.py                 # 核心应用逻辑、UI 渲染与算法引擎
-├── .env                    # (需手动创建) 存放私密环境变量
-├── .gitignore              # Git 忽略配置
-└── requirements.txt        # Python 依赖清单
+flet>=0.80.0
+requests>=2.31.0
+python-dotenv>=1.0.0
 
 ```
 
----
-
-## 🛠️ 部署与安装 (Installation)
-
-推荐使用 Python 虚拟环境（Virtual Environment）来运行此项目，避免污染全局环境。
-
-**1. 克隆仓库**
+### 1. 本地测试运行
 
 ```bash
+# 1. 克隆代码
 git clone [https://github.com/你的用户名/StarLink-Pro.git](https://github.com/你的用户名/StarLink-Pro.git)
 cd StarLink-Pro
 
-```
-
-**2. 创建并激活虚拟环境**
-
-```bash
-# Windows
+# 2. 配置环境
 python -m venv venv
-.\venv\Scripts\activate
-
-# macOS / Linux
-python3 -m venv venv
-source venv/bin/activate
-
-```
-
-**3. 安装核心依赖**
-
-```bash
+source venv/bin/activate  # Windows 用户使用: .\venv\Scripts\activate
 pip install -r requirements.txt
 
-```
+# 3. 注入安全密钥
+echo "ASTROMETRY_API_KEY=你的真实API_KEY" > .env
 
-**4. 秘钥配置 (Environment Variables)**
-在项目根目录新建一个 `.env` 文件，并填入你从 [Astrometry Nova](https://nova.astrometry.net/) 获取的 API Key：
-
-```env
-ASTROMETRY_API_KEY=your_real_api_key_here
+# 4. 点火启动
+python main.py
 
 ```
 
----
+### 2. 跨平台编译 (Build to Standalone)
 
-## 🕹️ 硬件通信协议 (Hardware Protocol)
-
-若您打算自行开发接收端硬件（如 ESP32），请配置您的单片机监听本地端口 `8888` 的 UDP 协议。
-
-**StarLink Pro 发送的 Payload 格式：**
-
-```text
-<RA_FLOAT>,<DEC_FLOAT>
-
-```
-
-* **示例**：`253.1415, -45.6789`
-* **说明**：赤经 (RA) 和赤纬 (Dec) 均保留 4 位小数，以英文逗号分隔，采用 UTF-8 编码发送。下位机收到字符串后进行 `split(',')` 即可驱动电机解析。
-
----
-
-## 📱 打包为独立 App (Build for Android)
-
-得益于 Flet 的强力跨平台特性，您可以一键将本项目编译为 Android APK：
-
-1. 确保您的开发机已配置好 **Flutter SDK** 与 **Android Studio 工具链**。
-2. 在终端执行打包指令：
+使用 Flet CLI 将 Python 源码直接转化为原生应用程序：
 
 ```bash
-flet build apk --project-name "StarLinkPro" --org "com.geek.starlink"
+# 编译为 Windows / macOS 桌面可执行文件
+flet build windows  # 或 macos
+
+# 编译为 Android APK (需预装 Flutter SDK)
+flet build apk --project-name "StarLinkPro" --org "com.astronomy.starlink"
 
 ```
-
-3. 编译完成后，前往 `build/apk/` 目录下获取您的专属 `app-release.apk` 安装包。
 
 ---
 
-## 📄 开源协议 (License)
+## 🗺️ 演进路线图 (Roadmap)
 
-本项目基于 [MIT License](https://www.google.com/search?q=LICENSE) 协议开源。欢迎硬件创客与天文同好 Fork、提交 PR 并将它应用到你的 DIY 天文望远镜项目中！
+* [x] 开普勒轨道算法引擎与 LST 恒星时同步
+* [x] Astrometry API 接入与异步无感解析
+* [x] ESP32 UDP 伺服控制协议
+* [ ] 接入 ASCOM / INDI 工业标准驱动
+* [ ] 增加梅西耶天体 (Messier Objects) 本地离线星表
+* [ ] 离线 Plate Solving 支持 (ASTAP 引擎桥接)
 
-```
+---
 
-***
+## 🤝 贡献与许可 (Contributing & License)
 
-
+本项目采用 [MIT License](https://www.google.com/search?q=LICENSE) 授权。欢迎任何形式的 Pull Requests。
+如果您在 DIY 天文台/赤道仪的路上使用了本项目，欢迎在 Issue 中分享您的作品！
 
 
 ```
