@@ -1,0 +1,9 @@
+[project]
+name = "starlink"
+version = "1.0.0"
+description = "StarLink Pro - AI Star Tracking"
+dependencies = ["flet", "requests"]
+
+[tool.flet]
+org = "com.Serein1t.starlink"       # ← 改成你想要的包名
+product = "StarLink Pro"           # ← 应用显示名
