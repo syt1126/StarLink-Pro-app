@@ -130,5 +130,3 @@ flet build apk --project-name "StarLinkPro" --org "com.astronomy.starlink"
 本项目采用 [MIT License](https://www.google.com/search?q=LICENSE) 授权。欢迎任何形式的 Pull Requests。
 如果您在 DIY 天文台/赤道仪的路上使用了本项目，欢迎在 Issue 中分享您的作品！
 
-
-```
